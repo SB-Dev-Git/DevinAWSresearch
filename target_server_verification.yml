@@ -1,0 +1,78 @@
+---
+- name: ターゲットサーバ検証プレイブック
+  hosts: target_servers
+  become: yes
+  gather_facts: yes
+  
+  tasks:
+    - name: システム情報収集
+      debug:
+        msg: |
+          ホスト名: {{ ansible_hostname }}
+          OS: {{ ansible_distribution }} {{ ansible_distribution_version }}
+          アーキテクチャ: {{ ansible_architecture }}
+          IPアドレス: {{ ansible_default_ipv4.address }}
+          
+    - name: ディスク使用量確認
+      command: df -h
+      register: disk_usage
+      
+    - name: ディスク使用量表示
+      debug:
+        var: disk_usage.stdout_lines
+        
+    - name: メモリ情報確認
+      command: free -h
+      register: memory_info
+      
+    - name: メモリ情報表示
+      debug:
+        var: memory_info.stdout_lines
+        
+    - name: 稼働時間確認
+      command: uptime
+      register: uptime_info
+      
+    - name: 稼働時間表示
+      debug:
+        var: uptime_info.stdout
+        
+    - name: テストディレクトリ作成
+      file:
+        path: /tmp/ansible_test
+        state: directory
+        mode: '0755'
+        
+    - name: テストファイル作成
+      copy:
+        content: |
+          Ansibleによるターゲットサーバ管理テスト
+          作成日時: {{ ansible_date_time.iso8601 }}
+          制御ノード: oshima_yoshie_devin_ec2
+          ターゲットノード: {{ ansible_hostname }}
+        dest: /tmp/ansible_test/verification.txt
+        mode: '0644'
+        
+    - name: 作成ファイル確認
+      command: cat /tmp/ansible_test/verification.txt
+      register: test_file_content
+      
+    - name: ファイル内容表示
+      debug:
+        var: test_file_content.stdout_lines
+        
+    - name: パッケージ情報確認（yum）
+      yum:
+        list: installed
+      register: installed_packages
+      
+    - name: インストール済みパッケージ数表示
+      debug:
+        msg: "インストール済みパッケージ数: {{ installed_packages.results | length }}"
+        
+    - name: サービス状態確認
+      service_facts:
+      
+    - name: 実行中サービス数表示
+      debug:
+        msg: "サービス情報収集完了: {{ ansible_facts.services.keys() | list | length }} 個のサービスを確認"
