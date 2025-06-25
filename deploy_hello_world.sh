@@ -22,6 +22,7 @@ fi
 echo "=== ファイル転送 ==="
 scp -i oshima_devin.pem -o StrictHostKeyChecking=no web_server_setup.yml ec2-user@$CONTROL_IP:/tmp/
 scp -i oshima_devin.pem -o StrictHostKeyChecking=no ansible_inventory.ini ec2-user@$CONTROL_IP:/tmp/
+scp -i oshima_devin.pem -o StrictHostKeyChecking=no -r templates/ ec2-user@$CONTROL_IP:/tmp/
 
 ssh -i oshima_devin.pem -o StrictHostKeyChecking=no ec2-user@$CONTROL_IP << EOF
 cat > /tmp/ansible_inventory.ini << 'INVENTORY'
