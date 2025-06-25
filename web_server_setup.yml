@@ -31,16 +31,26 @@
         home: "{{ app_dir }}"
         create_home: yes
         
-    # Node.jsとnpmインストール
-    - name: NodeSourceリポジトリ追加
-      shell: curl -fsSL https://rpm.nodesource.com/setup_18.x | bash -
+    # Node.jsとnpmインストール（直接ダウンロード方式）
+    - name: Node.js 16.x LTS直接ダウンロード・インストール
+      shell: |
+        cd /tmp
+        curl -fsSL https://nodejs.org/dist/v16.20.2/node-v16.20.2-linux-x64.tar.xz -o node-v16.20.2-linux-x64.tar.xz
+        tar -xf node-v16.20.2-linux-x64.tar.xz
+        cp -r node-v16.20.2-linux-x64/* /usr/local/
+        ln -sf /usr/local/bin/node /usr/bin/node
+        ln -sf /usr/local/bin/npm /usr/bin/npm
+      become: yes
       args:
-        creates: /etc/yum.repos.d/nodesource-el7.repo
-        
-    - name: Node.jsとnpmインストール
-      yum:
-        name: nodejs
-        state: present
+        creates: /usr/bin/node
+
+    - name: Node.jsインストール確認
+      command: /usr/bin/node --version
+      register: node_version_check
+
+    - name: npmインストール確認
+      command: /usr/bin/npm --version
+      register: npm_version_check
         
     - name: Node.jsバージョン確認
       command: node --version
@@ -210,50 +220,30 @@
         state: started
         
     # Nginxインストールと設定
-    - name: Nginxインストール
-      yum:
-        name: nginx
-        state: present
+    - name: Amazon Linux ExtrasでNginxインストール
+      shell: amazon-linux-extras install nginx1 -y
+      become: yes
+      args:
+        creates: /usr/sbin/nginx
         
-    - name: Nginx設定ファイル作成
+    - name: Nginx設定ファイル作成（HTTP初期設定）
       copy:
         content: |
           server {
               listen 80;
-              server_name {{ domain_name }};
+              server_name {{ domain_name }} {{ ansible_default_ipv4.address }};
+              
+              # セキュリティヘッダー
+              add_header X-Frame-Options DENY always;
+              add_header X-Content-Type-Options nosniff always;
+              add_header X-XSS-Protection "1; mode=block" always;
               
               # Let's Encrypt証明書検証用
               location /.well-known/acme-challenge/ {
                   root /var/www/html;
               }
               
-              # HTTPからHTTPSへリダイレクト
-              location / {
-                  return 301 https://$server_name$request_uri;
-              }
-          }
-
-          server {
-              listen 443 ssl http2;
-              server_name {{ domain_name }};
-              
-              # SSL証明書設定（Let's Encrypt）
-              ssl_certificate /etc/letsencrypt/live/{{ domain_name }}/fullchain.pem;
-              ssl_certificate_key /etc/letsencrypt/live/{{ domain_name }}/privkey.pem;
-              
-              # SSL設定
-              ssl_protocols TLSv1.2 TLSv1.3;
-              ssl_ciphers ECDHE-RSA-AES256-GCM-SHA512:DHE-RSA-AES256-GCM-SHA512:ECDHE-RSA-AES256-GCM-SHA384:DHE-RSA-AES256-GCM-SHA384;
-              ssl_prefer_server_ciphers off;
-              ssl_session_cache shared:SSL:10m;
-              ssl_session_timeout 10m;
-              
-              # セキュリティヘッダー
-              add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
-              add_header X-Frame-Options DENY always;
-              add_header X-Content-Type-Options nosniff always;
-              
-              # リバースプロキシ設定
+              # Node.jsアプリケーションへのリバースプロキシ
               location / {
                   proxy_pass http://127.0.0.1:3000;
                   proxy_http_version 1.1;
@@ -270,10 +260,11 @@
         backup: yes
         
     # Let's Encrypt Certbotインストール
-    - name: EPELリポジトリ有効化
-      yum:
-        name: epel-release
-        state: present
+    - name: Amazon Linux ExtrasでEPELリポジトリ有効化
+      shell: amazon-linux-extras install epel -y
+      become: yes
+      args:
+        creates: /etc/yum.repos.d/epel.repo
         
     - name: Certbotインストール
       yum:
@@ -282,7 +273,13 @@
           - python2-certbot-nginx
         state: present
         
-    # ファイアウォール設定
+    # ファイアウォール設定（Amazon Linux 2対応）
+    - name: firewalldインストール
+      yum:
+        name: firewalld
+        state: present
+      become: yes
+        
     - name: firewalldサービス確認・起動
       systemd:
         name: firewalld
@@ -303,31 +300,12 @@
         state: enabled
         immediate: yes
         
-    # Nginx起動前の準備
-    - name: Nginxテスト設定作成（SSL証明書取得前）
-      copy:
-        content: |
-          server {
-              listen 80;
-              server_name {{ domain_name }};
-              
-              location /.well-known/acme-challenge/ {
-                  root /var/www/html;
-              }
-              
-              location / {
-                  proxy_pass http://127.0.0.1:3000;
-                  proxy_http_version 1.1;
-                  proxy_set_header Upgrade $http_upgrade;
-                  proxy_set_header Connection 'upgrade';
-                  proxy_set_header Host $host;
-                  proxy_set_header X-Real-IP $remote_addr;
-                  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-                  proxy_set_header X-Forwarded-Proto $scheme;
-                  proxy_cache_bypass $http_upgrade;
-              }
-          }
-        dest: /etc/nginx/conf.d/{{ app_name }}-temp.conf
+    # /var/www/htmlディレクトリ作成（Let's Encrypt用）
+    - name: /var/www/htmlディレクトリ作成
+      file:
+        path: /var/www/html
+        state: directory
+        mode: '0755'
         
     - name: デフォルトNginx設定無効化
       file:

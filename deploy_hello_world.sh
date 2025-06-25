@@ -24,7 +24,14 @@ scp -i oshima_devin.pem -o StrictHostKeyChecking=no web_server_setup.yml ec2-use
 scp -i oshima_devin.pem -o StrictHostKeyChecking=no ansible_inventory.ini ec2-user@$CONTROL_IP:/tmp/
 
 ssh -i oshima_devin.pem -o StrictHostKeyChecking=no ec2-user@$CONTROL_IP << EOF
-sed -i "s/ansible_host=.*/ansible_host=$TARGET_IP/" /tmp/ansible_inventory.ini
+cat > /tmp/ansible_inventory.ini << 'INVENTORY'
+[target_servers]
+oshima_yoshie_devin_target_ec2 ansible_host=$TARGET_IP ansible_user=ec2-user ansible_ssh_private_key_file=/home/ec2-user/oshima_devin.pem
+
+[target_servers:vars]
+ansible_ssh_common_args='-o StrictHostKeyChecking=no'
+ansible_python_interpreter=/usr/bin/python
+INVENTORY
 EOF
 
 echo "=== Webサーバセットアッププレイブック実行 ==="
