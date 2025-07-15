@@ -83,8 +83,8 @@ DevinAWSresearchシステムは以下の2つのEC2インスタンスで構成さ
 EC2インスタンスは起動するたびにパブリックIPv4アドレスが変化するため、システム全体での動的IP対応が重要です。
 
 **対応状況サマリー**:
-- ✅ **完全対応**: 2ファイル
-- ❌ **要改善**: 3ファイル + ドキュメント
+- ✅ **完全対応**: 3ファイル
+- ❌ **要改善**: 2ファイル + ドキュメント
 
 ### 2.2 ファイル別対応状況詳細
 
@@ -112,17 +112,27 @@ aws ec2 describe-instances --instance-ids i-0d1c0d59300c93fb9 i-00684986b921d00f
 - インスタンス起動後の現在のIPアドレスを動的に表示
 - 起動状態とIPアドレスの確認が可能
 
-#### 2.2.2 ❌ 動的IP対応が必要なファイル
+#### 2.2.2 ✅ 動的IP対応完了ファイル
 
-**1. run_ansible_verification.sh**
+**3. run_ansible_verification.sh**
 
-**現在の問題**:
+**対応内容**:
 ```bash
-# ハードコードされたIPアドレス
-ssh -i oshima_devin.pem -o StrictHostKeyChecking=no ec2-user@13.231.135.17 << 'EOF'
+# 動的IP取得の実装
+CONTROL_IP=$(aws ec2 describe-instances --instance-ids i-0d1c0d59300c93fb9 --query 'Reservations[0].Instances[0].PublicIpAddress' --output text)
+TARGET_IP=$(aws ec2 describe-instances --instance-ids i-00684986b921d00fa --query 'Reservations[0].Instances[0].PublicIpAddress' --output text)
 ```
 
-**推奨改善案**:
+**改善された機能**:
+- AWS CLIを使用してリアルタイムでIPアドレスを取得
+- インスタンス停止時の適切なエラーハンドリング
+- 動的インベントリファイル生成
+
+#### 2.2.3 ❌ 動的IP対応が必要なファイル
+
+**1. ansible_inventory.ini（静的ファイル）**
+
+**現在の問題**:
 ```bash
 #!/bin/bash
 
@@ -159,19 +169,7 @@ ansible-playbook -i ansible_inventory.ini /tmp/target_verification.yml -v
 EOF
 ```
 
-**2. ansible_inventory.ini**
-
-**現在の問題**:
-```ini
-[target_servers]
-oshima_yoshie_devin_target_ec2 ansible_host=13.230.71.11 ansible_user=ec2-user ansible_ssh_private_key_file=/home/ec2-user/oshima_devin.pem
-```
-
-**推奨改善案**:
-- 静的ファイルではなく、実行時に動的生成する方式に変更
-- `deploy_hello_world.sh`で実装されているような動的インベントリ生成を他のスクリプトでも採用
-
-**3. ドキュメント内のハードコードされたIP参照**
+**2. ドキュメント内のハードコードされたIP参照**
 
 **影響範囲**:
 - `docs/02_構成図.md`: 制御ノード (13.231.135.17)、ターゲットノード (13.230.71.11)
@@ -473,10 +471,11 @@ get_all_ips_parallel() {
 
 ### 8.1 短期的改善項目
 
-1. **run_ansible_verification.sh の動的IP対応**
+1. **✅ run_ansible_verification.sh の動的IP対応**
    - 優先度: 高
    - 工数: 1-2時間
    - 効果: インスタンス再起動時の自動対応
+   - **ステータス**: 完了
 
 2. **ドキュメント内IP参照の変数化**
    - 優先度: 中
@@ -516,6 +515,11 @@ get_all_ips_parallel() {
   - AWSインスタンス設定詳細の文書化
   - 動的IPアドレス対応状況の分析
   - 改善提案とベストプラクティスの追加
+
+- 2025-07-15: run_ansible_verification.sh 動的IP対応完了
+  - ハードコードされたIPアドレスを動的取得に変更
+  - エラーハンドリング機能を追加
+  - ドキュメント内の対応状況を更新
 
 ---
 
